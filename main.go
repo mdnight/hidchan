@@ -24,6 +24,7 @@ import (
 	"compress/zlib"
 	"errors"
 	"flag"
+	"github.com/mdnight/hidchan/icmptrans/icmptrans"
 	"io/ioutil"
 	"log"
 	"os"
@@ -31,7 +32,8 @@ import (
 )
 
 var (
-	workMode, defPath, name, compress *string
+	workMode, defPath, name, compress,
+	destIP *string
 )
 
 func initFlags() {
@@ -39,12 +41,16 @@ func initFlags() {
 	defPath = flag.String("o", "./", "Saving directory")
 	name = flag.String("n", "resData", "File name to save. Default: resData")
 	compress = flag.String("c", "", "Use compression: [l]zw, [g]zip, [z]lib, [n]one")
+	destIP = flag.String("-d", "", "Destination IPv4")
 	flag.Parse()
 }
 
 func main() {
 	initFlags()
 
+	if *destIP == "" {
+		log.Fatal("destination ip was not set")
+	}
 	switch *workMode {
 	case "R":
 		if *name == "" {
