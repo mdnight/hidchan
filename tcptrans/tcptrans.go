@@ -13,34 +13,43 @@ type TCPDict struct {
 
 //Transmit performs transmitting using tcp destination ports
 func (d *TCPDict) Transmit(data, noise []byte, destIP string) error {
+	//var conns [256]net.Conn
 	dstaddrs, err := net.LookupIP(destIP)
 	if err != nil {
 		log.Fatal(err)
 	}
-	var conns []net.Conn
 	if len(d.Dict) == 0 {
 		for i := 0; i < cap(d.Dict); i++ {
 			d.Dict[i] = uint16(i) + 27000
 		}
 	}
-	for _, i := range d.Dict {
-		tmp, err := net.Dial("tcp4", dstaddrs[0].String()+strconv.Itoa(int(i)))
+	data = bytes.Join([][]byte{data, []byte{0x55, 0xaa}}, []byte{})
+	// for _, value := range data {
+	// 	if conns[value] == nil {
+	// 		conns[value], err = net.Dial("tcp4",
+	// 			dstaddrs[0].String()+":"+
+	// 				strconv.Itoa(int(d.Dict[value])))
+	// 		if err != nil {
+	// 			return err
+	// 		}
+	// 		defer conns[value].Close()
+	// 	}
+	// 	_, err := conns[value].Write(noise)
+	// 	if err != nil {
+	// 		return err
+	// 	}
+	// 	time.Sleep(10 * time.Millisecond)
+	//}
+	for _, value := range data {
+		tmp, err := net.Dial("tcp4", dstaddrs[0].String()+":"+strconv.Itoa(int(d.Dict[value])))
 		if err != nil {
 			return err
 		}
-		conns = append(conns, tmp)
-		defer tmp.Close()
-	}
-	for _, i := range data {
-		_, err := conns[i].Write(noise)
+		_, err = tmp.Write(noise)
 		if err != nil {
 			return err
 		}
-	}
-	_, err = conns[0x55].Write(noise)
-	_, err = conns[0xaa].Write(noise)
-	if err != nil {
-		return err
+		tmp.Close()
 	}
 	return nil
 }
@@ -53,32 +62,38 @@ func (d *TCPDict) Receive() ([]byte, error) {
 
 	for _, i := range d.Dict {
 		tmp, err := net.Listen("tcp4", ":"+strconv.Itoa(int(i)))
+		defer tmp.Close()
 		if err != nil {
 			return []byte{}, err
 		}
 		listens = append(listens, tmp)
-		defer tmp.Close()
 	}
+
 	for key, val := range listens {
-		go func() {
-			for {
-				tmpBuf := make([]byte, 8192)
-				c, _ := val.Accept()
-				n, err := c.Read(tmpBuf)
-				if n > 0 && err == nil {
-					resBytes <- byte(key)
-				}
-				tmpBuf = tmpBuf[:0]
-			}
-		}()
+		go handleConnection(val, key, resBytes)
 	}
+
 	for {
 		result = append(result, <-resBytes)
 		tmpLen := len(result)
 		if tmpLen >= 2 && bytes.Equal([]byte{0x55, 0xaa}, result[tmpLen-2:]) {
-			break
+			for _, val := range listens {
+				val.Close()
+			}
+			return result[:tmpLen-2], nil
 		}
-
 	}
-	return result, nil
+}
+
+func handleConnection(c net.Listener, port int, ch chan byte) {
+	for {
+		c.Accept()
+		//buf := make([]byte, 1024)
+		//n, _ := conn.Read(buf)
+		//buf = buf[:0]
+		//if n > 0
+		{
+			ch <- byte(port)
+		}
+	}
 }
